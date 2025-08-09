@@ -77,6 +77,12 @@ echo "Exported REPO_NAME=$REPO_NAME"
 export REGION="$GOOGLE_CLOUD_LOCATION"
 echo "Exported REGION=$GOOGLE_CLOUD_LOCATION"
 
+# 13. Export VLLM_URL
+export VLLM_URL=$(gcloud run services describe gemma-vllm-fuse-service --platform=managed --region=$REGION --format='value(status.url)') || true)/sse
+echo "Exported VLLM_URL=$VLLM_URL"
 
-echo ""
+# 14. Export LB_IP
+export LB_IP=$(gcloud compute addresses describe agentverse-lb-ip --region=$REGION --format='value(address)') || true)/sse
+echo "Exported LB_IP=$LB_IP"
+
 echo "--- Environment setup complete ---"

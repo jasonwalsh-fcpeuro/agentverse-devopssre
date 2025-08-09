@@ -1,0 +1,52 @@
+# Define substitutions
+substitutions:
+  _PROJECT_ID: "$PROJECT_ID"
+  _PROJECT_NUMBER: "$PROJECT_NUMBER"
+  _REGION: "$REGION"
+  _REPO_NAME: "$REPO_NAME"
+  _IMAGE_TAG: "latest"
+  _VLLM_LB_URL: ""
+  _VLLM_MODEL_NAME: ""
+  _SSL_VERIFY: "False"
+steps:
+# --- Step 1:  Docker Builds ---
+
+# Build guardian agent 
+- id: 'build-guardian'
+  name: 'gcr.io/cloud-builders/docker'
+  waitFor: ["-"]
+  args:
+    - 'build'
+    - '-t'
+    - '${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO_NAME}/guardian-agent:${_IMAGE_TAG}'
+    - '-f'
+    - './guardian/Dockerfile'
+    - '.'
+
+# --- Step 2:  Docker Pushes ---
+- id: 'push-guardian'
+  name: 'gcr.io/cloud-builders/docker'
+  waitFor: ['build-guardian'] 
+  args:
+    - 'push'
+    - '${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO_NAME}/guardian-agent:${_IMAGE_TAG}'
+
+
+# --- Step 3: Deployments ---
+# Deploy guardian agent
+- id: 'deploy-guardian'
+  name: 'gcr.io/cloud-builders/gcloud'
+  waitFor: ['push-guardian'] 
+  args:
+    - 'run'
+    - 'deploy'
+    - 'guardian-agent'
+    - '--image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_REPO_NAME}/guardian-agent:${_IMAGE_TAG}'
+    - '--platform=managed'
+    - '--region=${_REGION}'
+    - '--allow-unauthenticated'
+    - '--project=${_PROJECT_ID}'
+    - '--set-env-vars=VLLM_LB_URL=${_VLLM_LB_URL},VLLM_MODEL_NAME=${_VLLM_MODEL_NAME},GOOGLE_CLOUD_PROJECT=${_PROJECT_ID},GOOGLE_CLOUD_LOCATION=${_REGION},A2A_HOST=0.0.0.0,A2A_PORT=8080,PUBLIC_URL=https://guardian-agent-${_PROJECT_NUMBER}.${_REGION}.run.app,SSL_VERIFY=${_SSL_VERIFY}'
+    - '--min-instances=1'
+  env: 
+    - 'GOOGLE_CLOUD_PROJECT=${_PROJECT_ID}'
