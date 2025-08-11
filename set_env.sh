@@ -76,16 +76,69 @@ echo "Exported REPO_NAME=$REPO_NAME"
 # 12. Export REGION
 export REGION="$GOOGLE_CLOUD_LOCATION"
 echo "Exported REGION=$GOOGLE_CLOUD_LOCATION"
-
-export OLLAMA_URL=$(gcloud run services describe gemma-ollama-baked-service --platform=managed --region=$REGION --format='value(status.url)') || true)/sse
+# 12. Export OLLAMA_URL
+# First, try to get the base URL, hiding any errors.
+OLLAMA_URL_BASE=$(gcloud run services describe gemma-ollama-baked-service --platform=managed --region=$REGION --format='value(status.url)' 2>/dev/null)
+# If the command succeeded and returned a URL, append /sse. Otherwise, set to empty string.
+if [[ -n "$OLLAMA_URL_BASE" ]]; then
+  export OLLAMA_URL="${OLLAMA_URL_BASE}"
+else
+  export OLLAMA_URL=""
+fi
 echo "Exported OLLAMA_URL=$OLLAMA_URL"
 
 # 13. Export VLLM_URL
-export VLLM_URL=$(gcloud run services describe gemma-vllm-fuse-service --platform=managed --region=$REGION --format='value(status.url)') || true)/sse
+# First, try to get the base URL, hiding any errors.
+VLLM_URL_BASE=$(gcloud run services describe gemma-vllm-fuse-service --platform=managed --region=$REGION --format='value(status.url)' 2>/dev/null)
+# If the command succeeded and returned a URL, append /sse. Otherwise, set to empty string.
+if [[ -n "$VLLM_URL_BASE" ]]; then
+  export VLLM_URL="${VLLM_URL_BASE}"
+else
+  export VLLM_URL=""
+fi
 echo "Exported VLLM_URL=$VLLM_URL"
 
+
 # 14. Export LB_IP
-export LB_IP=$(gcloud compute addresses describe agentverse-lb-ip --region=$REGION --format='value(address)') || true)/sse
+# First, try to get the IP address, hiding any errors.
+LB_IP_BASE=$(gcloud compute addresses describe agentverse-lb-ip --region=$REGION --format='value(address)' 2>/dev/null)
+# If the command succeeded and returned an IP, construct the URL. Otherwise, set to empty string.
+if [[ -n "$LB_IP_BASE" ]]; then
+  export LB_IP="${LB_IP_BASE}"
+else
+  export LB_IP=""
+fi
 echo "Exported LB_IP=$LB_IP"
+
+# Cloud Storage
+export BUCKET_NAME="${PROJECT_ID}-bastion"
+echo "Exported BUCKET_NAME=$BUCKET_NAME"
+
+export VPC_SUBNET="default"
+echo "Exported VPC_SUBNET=$VPC_SUBNET"
+
+export VPC_NETWORK="default"
+echo "Exported VPC_NETWORK=$VPC_NETWORK"
+
+
+export MODEL_ID="google/gemma-3-1b-it"
+echo "Exported MODEL_ID=$MODEL_ID"
+
+export ARMOR_ID=$PROJECT_ID"_ARMOR_ID"
+echo "Exported ARMOR_ID=$ARMOR_ID"
+
+export VLLM_MODEL_NAME="/mnt/models/gemma-3-1b-it"
+echo "Exported export VLLM_MODEL_NAME=$VLLM_MODEL_NAME"
+
+export VLLM_LB_URL="${VLLM_URL}/v1"
+echo "Exported VLLM_LB_URL=$VLLM_LB_URL"
+
+export VLLM_LB_URL="${VLLM_URL}/v1"
+echo "Exported VLLM_LB_URL=$VLLM_LB_URL"
+
+export PUBLIC_URL="https://guardian-agent-${PROJECT_NUMBER}.${REGION}.run.app"
+echo "Exported PUBLIC_URL=$PUBLIC_URL"
+
+
 
 echo "--- Environment setup complete ---"

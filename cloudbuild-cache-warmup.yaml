@@ -1,0 +1,35 @@
+# cloudbuild.yaml (Corrected with escaped shell variables)
+substitutions:
+  _REGION: us-central1
+  _REPO_NAME: agentverse-repo
+  _BASE_IMAGE_PUBLIC: us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve:20250801_0916_RC01
+  _IMAGE_NAME: pytorch-vllm-serve
+  _IMAGE_TAG: latest
+
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  id: 'Pull, Tag, and Push'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    set -eu
+
+    # Define the shell variable. This line doesn't need to change.
+    PRIVATE_IMAGE_TAG="${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/${_IMAGE_NAME}:${_IMAGE_TAG}"
+    
+    echo "Pulling public image: ${_BASE_IMAGE_PUBLIC}"
+    docker pull "${_BASE_IMAGE_PUBLIC}"
+    
+    # --- Use $$ to escape the shell variable for Cloud Build ---
+    echo "Tagging as private image: $${PRIVATE_IMAGE_TAG}"
+    docker tag "${_BASE_IMAGE_PUBLIC}" "$${PRIVATE_IMAGE_TAG}"
+    
+    # --- Use $$ to escape the shell variable for Cloud Build ---
+    echo "Pushing private image to Artifact Registry"
+    docker push "$${PRIVATE_IMAGE_TAG}"
+    
+    echo "Successfully pushed image to repository."
+
+images:
+- '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_IMAGE_NAME}:${_IMAGE_TAG}'
