@@ -32,7 +32,7 @@ def main():
         'name': 'config',
         'secret': {
             'secretName': GMP_SECRET_NAME,
-            'items': [{'key': 'latest', 'path': 'monitoring-config.yaml'}]
+            'items': [{'key': 'latest', 'path': 'config.yaml'}]
         }
     }
 
