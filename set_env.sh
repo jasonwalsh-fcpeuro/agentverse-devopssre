@@ -6,7 +6,8 @@
 
 # --- Configuration ---
 PROJECT_FILE="~/project_id.txt"
-GOOGLE_CLOUD_LOCATION="us-central1"
+#GOOGLE_CLOUD_LOCATION="us-central1"
+GOOGLE_CLOUD_LOCATION="europe-west4"
 REPO_NAME="agentverse-repo"
 # ---------------------
 
