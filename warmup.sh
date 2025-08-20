@@ -31,7 +31,7 @@ echo "This job will run in the background. The Build ID and Log URL will appear 
 # The '&' at the end runs the command as a background job.
 # We redirect stdout and stderr to a log file to keep the terminal clean,
 # and we print the PID (Process ID) of the background job.
-gcloud builds submit --config "$CONFIG_FILE" > warmup_build.log 2>&1 &
+gcloud builds submit --config "$CONFIG_FILE" --substitutions=_REGION="${REGION}",_REPO_NAME="${REPO_NAME}" > warmup_build.log 2>&1 &
 BG_PID=$!
 
 # 5. Provide follow-up instructions
