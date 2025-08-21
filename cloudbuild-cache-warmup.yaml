@@ -1,6 +1,6 @@
 # cloudbuild.yaml (Corrected with escaped shell variables)
 substitutions:
-  _REGION: us-central1
+  _REGION: ""
   _REPO_NAME: agentverse-repo
   _BASE_IMAGE_PUBLIC: us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve:20250801_0916_RC01
   _IMAGE_NAME: pytorch-vllm-serve
