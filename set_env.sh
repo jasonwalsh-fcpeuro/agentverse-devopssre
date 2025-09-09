@@ -78,11 +78,14 @@ echo "Exported REPO_NAME=$REPO_NAME"
 export REGION="$GOOGLE_CLOUD_LOCATION"
 echo "Exported REGION=$GOOGLE_CLOUD_LOCATION"
 # 12. Export OLLAMA_URL
-# First, try to get the base URL, hiding any errors.
+# First, try to get the base URL from Cloud Run, hiding any errors.
 OLLAMA_URL_BASE=$(gcloud run services describe gemma-ollama-baked-service --platform=managed --region=$REGION --format='value(status.url)' 2>/dev/null)
-# If the command succeeded and returned a URL, append /sse. Otherwise, set to empty string.
+# If the command succeeded and returned a URL, use it. Otherwise, check for local Ollama.
 if [[ -n "$OLLAMA_URL_BASE" ]]; then
   export OLLAMA_URL="${OLLAMA_URL_BASE}"
+elif command -v ollama &> /dev/null && ollama list &> /dev/null; then
+  # Ollama is installed and running locally
+  export OLLAMA_URL="http://localhost:11434"
 else
   export OLLAMA_URL=""
 fi
