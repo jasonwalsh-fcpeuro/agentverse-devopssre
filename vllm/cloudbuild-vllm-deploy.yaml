@@ -1,0 +1,120 @@
+# Cloud Build configuration for vLLM deployment with Gemma models
+# This deploys a high-performance vLLM service with GPU acceleration
+
+substitutions:
+  _REGION: europe-west4
+  _REPO_NAME: agentverse-repo
+  _SERVICE_NAME: gemma-vllm-fuse-service
+  _IMAGE_TAG: latest
+  _MODEL_NAME: google/gemma-2-2b-it
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # Step 1: Deploy vLLM service directly from pre-built image
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-vllm-service'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/pytorch-vllm-serve:${_IMAGE_TAG}'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      # Resource allocation
+      - '--cpu=4'
+      - '--memory=32Gi'
+      - '--gpu=1'
+      - '--gpu-type=nvidia-l4'
+      - '--no-gpu-zonal-redundancy'
+      # Service configuration
+      - '--port=8000'
+      - '--timeout=3600'
+      - '--concurrency=10'
+      - '--max-instances=3'
+      - '--min-instances=1'
+      # Environment variables
+      - '--set-env-vars=MODEL_NAME=${_MODEL_NAME}'
+      - '--set-env-vars=TENSOR_PARALLEL_SIZE=1'
+      - '--set-env-vars=GPU_MEMORY_UTILIZATION=0.9'
+      - '--set-env-vars=MAX_MODEL_LEN=4096'
+      - '--set-env-vars=SWAP_SPACE=4'
+      - '--set-env-vars=DISABLE_LOG_STATS=false'
+      # Mount Hugging Face secret
+      - '--set-secrets=HUGGING_FACE_HUB_TOKEN=hf-secret:latest'
+      # Performance settings
+      - '--no-cpu-throttling'
+      - '--no-cpu-boost'
+      # Labels
+      - '--labels=project=agentverse'
+      - '--labels=service=vllm'
+      - '--labels=model=gemma'
+      - '--labels=engine=vllm'
+      # Access control
+      - '--allow-unauthenticated'
+
+  # Step 2: Wait for service to be ready
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'wait-for-service'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Waiting for vLLM service to be ready..."
+        SERVICE_URL=$(gcloud run services describe ${_SERVICE_NAME} \
+          --region=${_REGION} \
+          --format='value(status.url)')
+        echo "Service deployed at: $${SERVICE_URL}"
+        
+        # Wait for service to be ready (can take 3-5 minutes for model loading)
+        echo "Waiting for model to load (this may take several minutes)..."
+        for i in {1..60}; do
+          if curl -s "$${SERVICE_URL}/health" > /dev/null 2>&1; then
+            echo "✓ Service is healthy"
+            break
+          elif curl -s "$${SERVICE_URL}/v1/models" > /dev/null 2>&1; then
+            echo "✓ Service is responding"
+            break
+          else
+            echo "Waiting for service to be ready... ($${i}/60)"
+            sleep 10
+          fi
+        done
+    waitFor: ['deploy-vllm-service']
+
+  # Step 3: Test the service
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'test-vllm-service'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        SERVICE_URL=$(gcloud run services describe ${_SERVICE_NAME} \
+          --region=${_REGION} \
+          --format='value(status.url)')
+        
+        echo "Testing vLLM service at $${SERVICE_URL}"
+        
+        # Test models endpoint
+        echo "Available models:"
+        curl -s "$${SERVICE_URL}/v1/models" | head -20 || echo "Models endpoint not ready yet"
+        
+        # Test generation
+        echo "Testing text generation..."
+        curl -s -X POST "$${SERVICE_URL}/v1/completions" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "model": "${_MODEL_NAME}",
+            "prompt": "As a Guardian of the Agentverse,",
+            "max_tokens": 50,
+            "temperature": 0.7
+          }' | head -10 || echo "Generation endpoint not ready yet"
+        
+        echo "vLLM service deployment completed!"
+    waitFor: ['wait-for-service']
+
+# Timeout for the entire build
+timeout: 2400s  # 40 minutes to allow for model loading

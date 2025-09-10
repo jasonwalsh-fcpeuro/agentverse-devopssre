@@ -60,12 +60,17 @@ AgentVerse DevOps/SRE infrastructure for deploying and managing AI agents on Goo
    echo "your-project-id" > ~/project_id.txt
    #+end_src
 
-3. Initialize environment:
+3. Set up API keys securely (IMPORTANT):
+   #+begin_src bash
+   make setup-keys    # Interactive secure key setup
+   #+end_src
+
+4. Initialize environment:
    #+begin_src bash
    source set_env.sh
    #+end_src
 
-4. Set up infrastructure:
+5. Set up infrastructure:
    #+begin_src bash
    make setup
    #+end_src
@@ -88,6 +93,7 @@ make help           # Show all available targets
 make setup          # Complete setup (auth, repo, docker)
 make validate       # Run all validation checks
 make audit          # Perform security and config audit
+make setup-keys     # Secure API key setup
 make deploy         # Deploy services to Cloud Run
 make clean          # Clean up resources
 #+end_src
@@ -263,11 +269,41 @@ make clean && make setup       # Clean and retry
 
 * Security Considerations
 
-- Never commit credentials
-- Use Secret Manager for sensitive data
-- Enable VPC Service Controls
-- Implement least privilege IAM
-- Regular security audits
+** 🔐 API Key Management
+
+**CRITICAL**: Never commit API keys to version control!
+
+#+begin_src bash
+make setup-keys     # Secure interactive setup
+make audit          # Full security audit
+make check-secrets  # Check for exposed secrets
+#+end_src
+
+** Supported API Keys
+
+- **Hugging Face**: Required for model downloads
+- **Google Gemini**: Required for Gemini API access  
+- **OpenAI/Anthropic**: Optional for external models
+
+** Security Features
+
+- ✅ Comprehensive .gitignore patterns
+- ✅ Automated secret scanning
+- ✅ Secure file permissions (600)
+- ✅ Environment variable validation
+- ✅ Git history scanning
+- ✅ Template-based setup
+
+** Security Checklist
+
+- [ ] Run =make setup-keys= for secure API key configuration
+- [ ] Verify =.env= has 600 permissions
+- [ ] Run =make audit= regularly
+- [ ] Never commit =.env= files
+- [ ] Rotate API keys every 90 days
+- [ ] Monitor API usage dashboards
+
+See [[./SECURITY.md][SECURITY.md]] for detailed security guidelines.
 
 * License
 
@@ -276,7 +312,6 @@ make clean && make setup       # Clean and retry
 * Support
 
 - Issues: [[https://github.com/weimeilin79/agentverse-devopssre/issues]]
-- Fork: [[https://github.com/jasonwalsh-fcpeuro/agentverse-devopssre]]
 
 * Links
 

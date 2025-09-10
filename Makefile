@@ -9,12 +9,21 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m # No Color
 
+# Python environment
+PYTHON := python3.11
+UV := uv
+VENV := .venv
+VENV_PYTHON := $(VENV)/bin/python
+VENV_SENTINEL := $(VENV)/.sentinel
+DEPS_SENTINEL := $(VENV)/.deps_installed
+
 # Default target
 help:
 	@echo "$(GREEN)AgentVerse DevOps/SRE Makefile$(NC)"
 	@echo ""
 	@echo "$(YELLOW)Setup & Configuration:$(NC)"
 	@echo "  make setup          - Complete setup (auth, repo, docker)"
+	@echo "  make setup-keys     - Secure API key configuration"
 	@echo "  make env            - Source environment variables"
 	@echo "  make setup-repo     - Create Artifact Registry repository"
 	@echo "  make configure-docker - Configure Docker for Artifact Registry"
@@ -28,7 +37,10 @@ help:
 	@echo ""
 	@echo "$(YELLOW)Build & Deploy:$(NC)"
 	@echo "  make build          - Build container images"
-	@echo "  make deploy         - Deploy services to Cloud Run"
+	@echo "  make deploy         - Deploy all services to Cloud Run"
+	@echo "  make deploy-ollama  - Deploy Ollama service only"
+	@echo "  make deploy-vllm    - Deploy vLLM service only"
+	@echo "  make setup-vllm     - Setup vLLM environment"
 	@echo "  make warmup         - Run cache warming"
 	@echo "  make validate-deploy - Validate deployment"
 	@echo ""
@@ -38,13 +50,25 @@ help:
 	@echo "  make builds         - List recent builds"
 	@echo ""
 	@echo "$(YELLOW)Development:$(NC)"
+	@echo "  make venv           - Create Python virtual environment"
+	@echo "  make install        - Install all dependencies"
+	@echo "  make install-dev    - Install with dev dependencies"
+	@echo "  make guardian       - Run Guardian agent"
 	@echo "  make test-local     - Run local tests"
+	@echo "  make test-ollama    - Test Ollama service"
+	@echo "  make test-vllm      - Test vLLM service"
 	@echo "  make show-env       - Display current environment"
 	@echo "  make clean          - Clean up resources"
+	@echo "  make clean-venv     - Remove virtual environment"
 
 # Complete setup
 setup: check-auth setup-repo configure-docker validate
 	@echo "$(GREEN)✓ Setup complete$(NC)"
+
+# Setup API keys securely
+setup-keys:
+	@echo "$(YELLOW)Setting up API keys securely...$(NC)"
+	@./setup_keys.sh
 
 # Source environment variables
 env:
@@ -167,8 +191,40 @@ check-permissions:
 		fi; \
 	done
 
+# Check for exposed secrets
+check-secrets:
+	@echo "$(YELLOW)Checking for exposed secrets...$(NC)"
+	@if [ -f ".env" ]; then \
+		echo "$(GREEN)  ✓ .env file exists$(NC)"; \
+		if [ "$$(stat -c '%a' .env 2>/dev/null || stat -f '%A' .env 2>/dev/null)" = "600" ]; then \
+			echo "$(GREEN)  ✓ .env has secure permissions (600)$(NC)"; \
+		else \
+			echo "$(YELLOW)  ⚠ .env permissions should be 600$(NC)"; \
+		fi; \
+	else \
+		echo "$(YELLOW)  ⚠ No .env file found - run 'make setup-keys'$(NC)"; \
+	fi && \
+	if grep -q "^\.env$$" .gitignore 2>/dev/null; then \
+		echo "$(GREEN)  ✓ .env properly ignored by git$(NC)"; \
+	else \
+		echo "$(RED)  ✗ .env not in .gitignore - SECURITY RISK$(NC)"; \
+	fi && \
+	echo "$(YELLOW)Scanning for accidentally committed secrets...$(NC)" && \
+	if git log --all --full-history --grep="token" --grep="password" --grep="secret" --grep="api_key" --grep="API_KEY" 2>/dev/null | head -1 | grep -q .; then \
+		echo "$(RED)  ⚠ Potential secrets found in commit messages$(NC)"; \
+		echo "    Run: git log --all --grep='token' --grep='password' --grep='secret'"; \
+	else \
+		echo "$(GREEN)  ✓ No obvious secrets in commit messages$(NC)"; \
+	fi && \
+	if git log --all --full-history --name-only -- "*.env" "*_token" "*_key" "*_secret" "*_password" | head -1 | grep -q .; then \
+		echo "$(RED)  ⚠ Potential secret files in git history$(NC)"; \
+		echo "    Run: git log --all --name-only -- '*.env' '*_token' '*_key'"; \
+	else \
+		echo "$(GREEN)  ✓ No secret files in git history$(NC)"; \
+	fi
+
 # Security and configuration audit
-audit: check-permissions
+audit: check-permissions check-secrets
 	@echo ""
 	@echo "$(YELLOW)Running security audit...$(NC)"
 	@. ./set_env.sh && \
@@ -200,9 +256,56 @@ build:
 		--project=$$PROJECT_ID
 
 # Deploy services
-deploy:
-	@echo "$(YELLOW)Deploying services to Cloud Run...$(NC)"
-	@echo "$(RED)Not yet implemented - add your service deployment here$(NC)"
+deploy: deploy-ollama deploy-vllm
+
+# Deploy Ollama with baked models
+deploy-ollama:
+	@echo "$(YELLOW)Deploying Ollama with baked models to Cloud Run...$(NC)"
+	@cd ollama && ./deploy-ollama-baked.sh
+
+# Deploy Ollama (simple version with single model)
+deploy-ollama-simple:
+	@echo "$(YELLOW)Deploying Ollama (simple) to Cloud Run...$(NC)"
+	@cd ollama && ./deploy-ollama-baked.sh --simple
+
+# Test Ollama service
+test-ollama:
+	@echo "$(YELLOW)Testing Ollama service...$(NC)"
+	@. ./set_env.sh && \
+	if [ -n "$$OLLAMA_URL" ]; then \
+		echo "Testing $$OLLAMA_URL..." && \
+		curl -s -X POST "$$OLLAMA_URL/api/generate" \
+			-H "Content-Type: application/json" \
+			-d '{"model": "gemma:2b", "prompt": "Hello, Guardian!", "stream": false}' | \
+			jq -r '.response' 2>/dev/null || echo "$(RED)Service not responding$(NC)"; \
+	else \
+		echo "$(YELLOW)Ollama URL not configured$(NC)"; \
+	fi
+
+# Deploy vLLM service
+deploy-vllm: setup-vllm
+	@echo "$(YELLOW)Deploying vLLM service to Cloud Run...$(NC)"
+	@cd vllm && gcloud builds submit \
+		--config cloudbuild-vllm-deploy.yaml \
+		--project="$$(cd .. && source set_env.sh > /dev/null 2>&1 && echo $$PROJECT_ID)" \
+		.
+
+# Setup vLLM environment (HF token, secrets)
+setup-vllm:
+	@echo "$(YELLOW)Setting up vLLM environment...$(NC)"
+	@cd vllm && ./setup-vllm.sh
+
+# Test vLLM service
+test-vllm:
+	@echo "$(YELLOW)Testing vLLM service...$(NC)"
+	@. ./set_env.sh && \
+	if [ -n "$$VLLM_URL" ]; then \
+		echo "Testing $$VLLM_URL..." && \
+		curl -s "$$VLLM_URL/v1/models" | jq '.data[].id' 2>/dev/null || \
+		curl -s "$$VLLM_URL/health" || echo "$(RED)Service not responding$(NC)"; \
+	else \
+		echo "$(YELLOW)vLLM URL not configured$(NC)"; \
+	fi
 
 # Run cache warming
 warmup:
@@ -273,8 +376,89 @@ show-env:
 	echo "  $(GREEN)PUBLIC_URL:$(NC) $$PUBLIC_URL" && \
 	echo "  $(GREEN)MODEL_ID:$(NC) $$MODEL_ID"
 
+# Python Virtual Environment Management
+# Create virtual environment with sentinel
+$(VENV_SENTINEL): pyproject.toml
+	@echo "$(YELLOW)Creating Python virtual environment...$(NC)"
+	@$(UV) venv --python $(PYTHON)
+	@touch $(VENV_SENTINEL)
+	@echo "$(GREEN)✓ Virtual environment created$(NC)"
+
+# Alias for creating venv
+venv: $(VENV_SENTINEL)
+
+# Install dependencies with sentinel
+$(DEPS_SENTINEL): $(VENV_SENTINEL) pyproject.toml
+	@echo "$(YELLOW)Installing dependencies with uv...$(NC)"
+	@$(UV) pip sync pyproject.toml
+	@touch $(DEPS_SENTINEL)
+	@echo "$(GREEN)✓ Dependencies installed$(NC)"
+
+# Install all dependencies
+install: $(DEPS_SENTINEL)
+
+# Install with dev dependencies
+install-dev: $(VENV_SENTINEL)
+	@echo "$(YELLOW)Installing with dev dependencies...$(NC)"
+	@$(UV) pip install -e ".[dev,guardian]"
+	@touch $(DEPS_SENTINEL)
+	@echo "$(GREEN)✓ All dependencies installed$(NC)"
+
+# Install Guardian dependencies specifically
+install-guardian: $(VENV_SENTINEL)
+	@echo "$(YELLOW)Installing Guardian dependencies...$(NC)"
+	@$(UV) pip install -e ".[guardian]"
+	@echo "$(GREEN)✓ Guardian dependencies installed$(NC)"
+
+# Run Guardian agent
+guardian: $(DEPS_SENTINEL)
+	@echo "$(YELLOW)Starting Guardian agent...$(NC)"
+	@. ./set_env.sh && \
+	$(VENV_PYTHON) guardian/guardian.py
+
+# Python tests
+test-python: $(DEPS_SENTINEL)
+	@echo "$(YELLOW)Running Python tests...$(NC)"
+	@$(VENV_PYTHON) -m pytest tests/ -v
+
+# Format code
+format: $(VENV_SENTINEL)
+	@echo "$(YELLOW)Formatting code...$(NC)"
+	@$(UV) run black guardian/ tests/
+	@$(UV) run ruff check --fix guardian/ tests/
+
+# Clean Python artifacts
+clean-python:
+	@echo "$(YELLOW)Cleaning Python artifacts...$(NC)"
+	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	@find . -type f -name "*.pyo" -delete 2>/dev/null || true
+	@echo "$(GREEN)✓ Python artifacts cleaned$(NC)"
+
+# Clean virtual environment
+clean-venv:
+	@echo "$(YELLOW)Removing virtual environment...$(NC)"
+	@rm -rf $(VENV)
+	@echo "$(GREEN)✓ Virtual environment removed$(NC)"
+
+# Scale down services to save costs
+clean-services:
+	@echo "$(YELLOW)Scaling down Cloud Run services to save costs...$(NC)"
+	@. ./set_env.sh && \
+	gcloud run services update gemma-ollama-baked-service --min-instances 0 --region $$REGION 2>/dev/null || echo "Ollama service not found" && \
+	gcloud run services update gemma-vllm-fuse-service --min-instances 0 --region $$REGION 2>/dev/null || echo "vLLM service not found" && \
+	gcloud run services update guardian-agent --min-instances 0 --region $$REGION 2>/dev/null || echo "Guardian agent not found"
+	@echo "$(GREEN)✓ Services scaled down$(NC)"
+
+# Complete infrastructure cleanup (DESTRUCTIVE)
+clean-all:
+	@echo "$(RED)⚠️  WARNING: This will DELETE ALL AgentVerse infrastructure!$(NC)"
+	@echo "$(YELLOW)Press Ctrl+C to cancel, or Enter to continue...$(NC)"
+	@read
+	@./cleanup-agentverse.sh
+
 # Clean up resources
-clean:
+clean: clean-python
 	@echo "$(YELLOW)Cleaning up resources...$(NC)"
 	@echo "$(RED)Warning: This will delete resources. Press Ctrl+C to cancel.$(NC)"
 	@sleep 3
@@ -282,3 +466,7 @@ clean:
 	echo "Cleaning build artifacts..." && \
 	gsutil -m rm -r gs://$$PROJECT_ID_cloudbuild/** 2>/dev/null || true && \
 	echo "$(GREEN)✓ Cleanup complete$(NC)"
+
+# Full clean (including venv)
+clean-all: clean clean-venv
+	@echo "$(GREEN)✓ Full cleanup complete$(NC)"

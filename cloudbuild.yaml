@@ -1,0 +1,53 @@
+# Cloud Build configuration for Guardian Agent
+substitutions:
+  _REGION: 'europe-west4'
+  _REPO_NAME: 'agentverse-repo'
+  _VLLM_URL: ''
+  _VLLM_MODEL_NAME: '/mnt/models/gemma-3-1b-it'
+  _VLLM_LB_URL: ''
+  _PUBLIC_URL: ''
+
+steps:
+# --- Step 1:  Docker Builds ---
+
+# Build guardian agent 
+- id: 'build-guardian'
+  name: 'gcr.io/cloud-builders/docker'
+  waitFor: ["-"]
+  args:
+    - 'build'
+    - '-t'
+    - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/guardian-agent:latest'
+    - '-f'
+    - './guardian/Dockerfile'
+    - '.'
+
+# --- Step 2:  Docker Pushes ---
+- id: 'push-guardian'
+  name: 'gcr.io/cloud-builders/docker'
+  waitFor: ['build-guardian'] 
+  args:
+    - 'push'
+    - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/guardian-agent:latest'
+
+
+# --- Step 3: Deployments ---
+# Deploy guardian agent
+- id: 'deploy-guardian'
+  name: 'gcr.io/cloud-builders/gcloud'
+  waitFor: ['push-guardian'] 
+  args:
+    - 'run'
+    - 'deploy'
+    - 'guardian-agent'
+    - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO_NAME}/guardian-agent:latest'
+    - '--platform=managed'
+    - '--labels=codelab=agentverse'
+    - '--timeout=3600'
+    - '--region=${_REGION}'
+    - '--allow-unauthenticated'
+    - '--project=${PROJECT_ID}'
+    - '--set-env-vars=VLLM_URL=${_VLLM_URL},VLLM_MODEL_NAME=${_VLLM_MODEL_NAME},VLLM_LB_URL=${_VLLM_LB_URL},GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=${_REGION},A2A_HOST=0.0.0.0,A2A_PORT=8080,PUBLIC_URL=${_PUBLIC_URL},SSL_VERIFY=False'
+    - '--min-instances=1'
+  env: 
+    - 'GOOGLE_CLOUD_PROJECT=${PROJECT_ID}'

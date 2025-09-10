@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentverse-devopssre"
+version = "0.1.0"
+description = "AgentVerse DevOps/SRE Infrastructure for AI Agents"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # Core AI/ML
+    "google-genai>=1.29.0",
+    "google-cloud-aiplatform>=1.108.0",
+    "litellm>=1.75.5",
+    "openai>=1.99.6",
+    "huggingface-hub>=0.34.4",
+    "tiktoken>=0.11.0",
+    # Google Cloud
+    "google-cloud-secret-manager>=2.24.0",
+    "google-cloud-storage>=2.19.0",
+    "google-cloud-logging>=3.12.1",
+    "google-auth>=2.40.3",
+    # FastAPI & Web
+    "fastapi>=0.116.1",
+    "uvicorn>=0.35.0",
+    "httpx>=0.28.1",
+    "sse-starlette>=3.0.2",
+    # Utilities
+    "pydantic>=2.11.7",
+    "pydantic-settings>=2.10.1",
+    "python-dotenv>=1.1.1",
+    "click>=8.2.1",
+    "watchdog>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+]
+
+guardian = [
+    "a2a-sdk>=0.3.0",
+    "mcp>=1.12.4",
+    "google-cloud-speech>=2.33.0",
+    "google-cloud-trace>=1.16.2",
+    "opentelemetry-exporter-gcp-trace>=1.9.0",
+]
+
+[tool.setuptools]
+packages = ["guardian"]
