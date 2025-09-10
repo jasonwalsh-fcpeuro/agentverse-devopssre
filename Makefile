@@ -61,6 +61,13 @@ help:
 	@echo "  make clean          - Clean up resources"
 	@echo "  make clean-venv     - Remove virtual environment"
 
+# Generate README.md from README.org (requires Emacs)
+README.md: README.org
+	@echo "$(YELLOW)Generating README.md from README.org...$(NC)"
+	@emacs README.org --batch -f org-md-export-to-markdown --kill 2>/dev/null || \
+		(echo "$(RED)Error: Emacs not available. Install with: brew install emacs$(NC)" && exit 1)
+	@echo "$(GREEN)✓ README.md generated$(NC)"
+
 # Complete setup
 setup: check-auth setup-repo configure-docker validate
 	@echo "$(GREEN)✓ Setup complete$(NC)"
